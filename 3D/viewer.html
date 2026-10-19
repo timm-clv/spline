@@ -1,0 +1,228 @@
+<!DOCTYPE html>
+<html lang="fr">
+<head>
+<meta charset="utf-8">
+<title>Simulation drone</title>
+<style>
+  html, body { margin: 0; height: 100%; overflow: hidden; background: #9fd0ff; font-family: sans-serif; }
+  #ui { position: fixed; top: 10px; left: 10px; background: rgba(0,0,0,.55); color: #fff;
+        padding: 10px 12px; border-radius: 8px; font-size: 13px; line-height: 1.8; }
+  #ui button, #ui select { font-size: 13px; }
+  #ui input[type=range] { width: 220px; vertical-align: middle; }
+</style>
+<script type="importmap">
+{ "imports": {
+  "three": "https://cdn.jsdelivr.net/npm/three@0.160.0/build/three.module.js",
+  "three/addons/": "https://cdn.jsdelivr.net/npm/three@0.160.0/examples/jsm/"
+} }
+</script>
+</head>
+<body>
+<div id="ui">
+  <button id="play">⏸ Pause</button>
+  <button id="reset">↺ Reset</button>
+  <select id="speed">
+    <option value="0.25">x0.25</option><option value="0.5">x0.5</option>
+    <option value="1" selected>x1</option><option value="2">x2</option><option value="4">x4</option>
+  </select>
+  <label><input type="checkbox" id="follow"> Suivre le drone</label><br>
+  <input type="range" id="time" min="0" max="1" step="0.001" value="0"><br>
+  <span id="info">chargement…</span>
+</div>
+
+<script type="module">
+import * as THREE from 'three';
+import { OrbitControls } from 'three/addons/controls/OrbitControls.js';
+import { GLTFLoader } from 'three/addons/loaders/GLTFLoader.js';
+
+// ---------- Réglages ----------
+const DRONE_SIZE = 0.02;        // taille max du drone (m) : le modèle est redimensionné automatiquement
+const MODEL_YAW_OFFSET = 0;    // si le drone vole "de travers", essaie Math.PI, Math.PI/2 ou -Math.PI/2
+const N_GRASS = 30000, N_TREES = 40, FIELD = 60;
+
+// Repère simulation (Z haut) -> Three.js (Y haut)
+const toT = (p) => new THREE.Vector3(p[0], p[2], -p[1]);
+
+// ---------- Scène ----------
+const scene = new THREE.Scene();
+scene.background = new THREE.Color(0x9fd0ff);
+scene.fog = new THREE.Fog(0x9fd0ff, 40, 120);
+const camera = new THREE.PerspectiveCamera(60, innerWidth / innerHeight, 0.05, 300);
+camera.position.set(-12, 9, 14);
+const renderer = new THREE.WebGLRenderer({ antialias: true });
+renderer.setSize(innerWidth, innerHeight);
+renderer.setPixelRatio(Math.min(devicePixelRatio, 2));
+renderer.shadowMap.enabled = true;
+document.body.appendChild(renderer.domElement);
+const controls = new OrbitControls(camera, renderer.domElement);
+controls.target.set(4, 2, -5);
+controls.update();
+
+scene.add(new THREE.HemisphereLight(0xffffff, 0x4a6b3a, 1.0));
+const sun = new THREE.DirectionalLight(0xffffff, 2.0);
+sun.position.set(20, 40, 15);
+sun.castShadow = true;
+sun.shadow.mapSize.set(2048, 2048);
+Object.assign(sun.shadow.camera, { left: -35, right: 35, top: 35, bottom: -35, far: 120 });
+scene.add(sun);
+
+// Sol
+const ground = new THREE.Mesh(new THREE.PlaneGeometry(300, 300),
+  new THREE.MeshStandardMaterial({ color: 0x3f7d3a, roughness: 1 }));
+ground.rotation.x = -Math.PI / 2;
+ground.receiveShadow = true;
+scene.add(ground);
+
+// RNG déterministe (même décor à chaque lancement)
+let seed = 12345;
+const rnd = () => { seed |= 0; seed = seed + 0x6D2B79F5 | 0; let t = Math.imul(seed ^ seed >>> 15, 1 | seed);
+  t = t + Math.imul(t ^ t >>> 7, 61 | t) ^ t; return ((t ^ t >>> 14) >>> 0) / 4294967296; };
+
+// Herbe (brins instanciés)
+{
+  const blade = new THREE.ConeGeometry(0.03, 0.4, 3);
+  blade.translate(0, 0.2, 0);
+  const grass = new THREE.InstancedMesh(blade, new THREE.MeshStandardMaterial({ roughness: 1 }), N_GRASS);
+  const o = new THREE.Object3D(), c = new THREE.Color();
+  for (let i = 0; i < N_GRASS; i++) {
+    o.position.set((rnd() - .5) * FIELD * 1.6, 0, (rnd() - .5) * FIELD * 1.6);
+    o.rotation.set((rnd() - .5) * .4, rnd() * 6.28, (rnd() - .5) * .4);
+    o.scale.setScalar(0.6 + rnd() * 1.2);
+    o.updateMatrix();
+    grass.setMatrixAt(i, o.matrix);
+    grass.setColorAt(i, c.setHSL(0.25 + rnd() * 0.07, 0.6, 0.25 + rnd() * 0.15));
+  }
+  scene.add(grass);
+}
+
+// ---------- Drone ----------
+const drone = new THREE.Group();
+drone.rotation.order = 'YXZ';
+scene.add(drone);
+const hud = document.getElementById('info');
+new GLTFLoader().load('drone.glb', (gltf) => {
+  const m = gltf.scene;
+  const box = new THREE.Box3().setFromObject(m);
+  const size = box.getSize(new THREE.Vector3()), ctr = box.getCenter(new THREE.Vector3());
+  const s = DRONE_SIZE / Math.max(size.x, size.y, size.z);
+  m.scale.setScalar(s);
+  console.log('taille modèle', size, 's =', s);
+  console.log('taille modèle', size, 'échelle', s);
+  m.position.copy(ctr).multiplyScalar(-s);   // recentre le modèle sur son pivot
+  m.traverse((n) => { if (n.isMesh) n.castShadow = true; });
+  const pivot = new THREE.Group();
+  pivot.add(m);
+  drone.add(pivot);
+}, undefined, (e) => {
+  console.error('drone.glb introuvable, cube de remplacement', e);
+  drone.add(new THREE.Mesh(new THREE.BoxGeometry(.5, .15, .8), new THREE.MeshStandardMaterial({ color: 0xff3030 })));
+});
+
+// ---------- Trajectoires ----------
+const data = await (await fetch('trajectoires.json')).json();
+const dt = data.dt;
+const P = [], V = [], segOf = [];
+data.segments.forEach((seg, k) => {
+  const from = k === 0 ? 0 : 1;               // évite le doublon au raccord des segments
+  for (let i = from; i < seg.pos.length; i++) { P.push(toT(seg.pos[i])); V.push(toT(seg.vel[i])); segOf.push(k); }
+});
+const nF = P.length, duration = (nF - 1) * dt;
+
+// Courbes planifiées (une couleur par segment) + points de passage et directions
+data.segments.forEach((seg, k) => {
+  const pts = seg.pos.filter((_, i) => i % 4 === 0 || i === seg.pos.length - 1).map(toT);
+  const curve = new THREE.CatmullRomCurve3(pts);
+  const color = new THREE.Color().setHSL((k * 0.17) % 1, 0.9, 0.55);
+  const tube = new THREE.Mesh(new THREE.TubeGeometry(curve, pts.length * 2, 0.04, 6),
+    new THREE.MeshBasicMaterial({ color }));
+  scene.add(tube);
+});
+data.waypoints.forEach((w) => {
+  const pos = toT(w), dir = toT(w.slice(3)).normalize();
+  const s = new THREE.Mesh(new THREE.SphereGeometry(0.12), new THREE.MeshBasicMaterial({ color: 0xffc400 }));
+  s.position.copy(pos); scene.add(s);
+  scene.add(new THREE.ArrowHelper(dir, pos, 1.0, 0xffc400, 0.25, 0.15));
+});
+
+// Évite de planter des arbres sur la trajectoire
+const near = (x, z, r) => P.some((p, i) => i % 10 === 0 && Math.hypot(p.x - x, p.z - z) < r);
+for (let i = 0, placed = 0; placed < N_TREES && i < 2000; i++) {
+  const x = (rnd() - .5) * FIELD, z = (rnd() - .5) * FIELD, h = 3 + rnd() * 4;
+  if (near(x, z, 3)) continue;
+  const tree = new THREE.Group();
+  const trunk = new THREE.Mesh(new THREE.CylinderGeometry(0.15, 0.25, h * 0.4, 8),
+    new THREE.MeshStandardMaterial({ color: 0x6b4a2b }));
+  trunk.position.y = h * 0.2;
+  tree.add(trunk);
+  const leaf = new THREE.MeshStandardMaterial({ color: new THREE.Color().setHSL(0.3 + rnd() * .05, .6, .22) });
+  for (let j = 0; j < 3; j++) {
+    const cone = new THREE.Mesh(new THREE.ConeGeometry(1.6 - j * 0.4, h * 0.45, 8), leaf);
+    cone.position.y = h * (0.45 + j * 0.2);
+    tree.add(cone);
+  }
+  tree.traverse((n) => { if (n.isMesh) n.castShadow = true; });
+  tree.position.set(x, 0, z);
+  scene.add(tree); placed++;
+}
+
+// Arbres du slalom (positions venant de simulate.py)
+for (const [x, y] of data.trees || []) {
+  const h = 5, tree = new THREE.Group();
+  const trunk = new THREE.Mesh(new THREE.CylinderGeometry(0.15, 0.25, h * 0.4, 8),
+    new THREE.MeshStandardMaterial({ color: 0x6b4a2b }));
+  trunk.position.y = h * 0.2; tree.add(trunk);
+  const leaf = new THREE.MeshStandardMaterial({ color: 0x2f6b2a });
+  for (let j = 0; j < 3; j++) {
+    const cone = new THREE.Mesh(new THREE.ConeGeometry(1.6 - j * 0.4, h * 0.45, 8), leaf);
+    cone.position.y = h * (0.45 + j * 0.2); tree.add(cone);
+  }
+  tree.traverse((n) => { if (n.isMesh) n.castShadow = true; });
+  tree.position.set(x, 0, -y);   // repère simulation -> Three.js
+  scene.add(tree);
+}
+
+
+// Trace du vol réel (se dessine au fil de la simulation)
+const trailGeo = new THREE.BufferGeometry();
+trailGeo.setAttribute('position', new THREE.BufferAttribute(new Float32Array(nF * 3), 3));
+P.forEach((p, i) => p.toArray(trailGeo.attributes.position.array, i * 3));
+trailGeo.setDrawRange(0, 0);
+const trail = new THREE.Line(trailGeo, new THREE.LineBasicMaterial({ color: 0xffffff }));
+trail.frustumCulled = false;
+scene.add(trail);
+
+// ---------- Animation ----------
+let t = 0, playing = true, speed = 1, lastYaw = 0;
+const $ = (id) => document.getElementById(id);
+$('play').onclick = () => { playing = !playing; $('play').textContent = playing ? '⏸ Pause' : '▶ Lecture'; };
+$('reset').onclick = () => { t = 0; };
+$('speed').onchange = (e) => { speed = +e.target.value; };
+$('time').oninput = (e) => { t = +e.target.value * duration; };
+
+const clock = new THREE.Clock();
+renderer.setAnimationLoop(() => {
+  if (playing) { t += clock.getDelta() * speed; if (t > duration) t = 0; } else clock.getDelta();
+  const f = t / dt, i = Math.min(Math.floor(f), nF - 2), a = f - i;
+  const pos = P[i].clone().lerp(P[i + 1], a), vel = V[i].clone().lerp(V[i + 1], a);
+
+  drone.position.copy(pos);
+  const hs = Math.hypot(vel.x, vel.z);
+  if (hs > 0.2) lastYaw = Math.atan2(vel.x, vel.z);       // le nez du modèle pointe vers +Z
+  drone.rotation.y = lastYaw + MODEL_YAW_OFFSET;
+  drone.rotation.x = Math.min(hs * 0.05, 0.35);            // légère inclinaison vers l'avant
+
+  trailGeo.setDrawRange(0, i + 2);
+  if ($('follow').checked) { camera.position.add(pos.clone().sub(controls.target)); controls.target.copy(pos); }
+  controls.update();
+
+  $('time').value = t / duration;
+  hud.textContent = `t = ${t.toFixed(2)} s | v = ${vel.length().toFixed(2)} m/s | segment ${segOf[i] + 1}/${data.segments.length}`;
+  renderer.render(scene, camera);
+});
+addEventListener('resize', () => {
+  camera.aspect = innerWidth / innerHeight; camera.updateProjectionMatrix();
+  renderer.setSize(innerWidth, innerHeight);
+});
+</script>
+</body>
+</html>
