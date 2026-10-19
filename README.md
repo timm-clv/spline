@@ -55,4 +55,17 @@ python benchmark.py
 python simulate.py        # génère trajectoires.json + ouvre le viewer web
 ```
 
-Projet académique (SeaTech, Toulon). Voir le rapport associé pour la description complète du système. [ici](report/Visual%20Inertial%20Data%20Collection%20Platform%20and%20Sensor%20Fusion%20Benchmarking.pdf).
+Projet académique (SeaTech, Toulon). Voir le rapport associé pour la description complète du système. [ici](rapport/Splines.pdf).
+
+
+
+
+
+
+
+
+
+
+
+
+
