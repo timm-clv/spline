@@ -4,6 +4,8 @@ Contrôleur de trajectoire pour robots mobiles combinant **courbes de Bézier cu
 
 
 
+https://github.com/user-attachments/assets/2edf16d9-05f7-462f-b524-2aa82b1fccc6
+
 
 ---
 
