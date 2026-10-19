@@ -1,4 +1,4 @@
-# Splines Bézier — Trajectographie hybride IA + Physique
+# Splines Bézier — Trajectographie par NN
 
 Contrôleur de trajectoire pour robots mobiles combinant **courbes de Bézier cubiques**, **apprentissage supervisé** et **raffinement cinématique**. Pipeline validé en **2D** (robot mobile) et étendu en **3D** (drone), avec exécution temps réel compatible **50 Hz** (budget 20 ms/pas).
 
@@ -7,9 +7,9 @@ Contrôleur de trajectoire pour robots mobiles combinant **courbes de Bézier cu
 
 ---
 
-## ⚙️ Principe
+## Principe
 
-1. **Génération hors-ligne** : pour chaque paire (robot, cible), on calcule par dichotomie le temps minimal \(T_{opt}\) tel que la courbe de Bézier cubique respecte \(V_{\max} = 6.5\) m/s et \(A_{\max} = 6.0\) m/s². Les points de contrôle sont déduits des vitesses de départ/arrivée imposées :
+1. **Pré-Génération** : pour chaque paire (robot, cible), on calcule par dichotomie le temps minimal \(T_{opt}\) tel que la courbe de Bézier cubique respecte \(V_{\max} = 6.5\) m/s et \(A_{\max} = 6.0\) m/s². Les points de contrôle sont déduits des vitesses de départ/arrivée imposées :
 
    \[
    P_1 = P_0 + \frac{v_{start} \cdot T}{3} \, u_{start}, \qquad
@@ -32,11 +32,10 @@ Contrôleur de trajectoire pour robots mobiles combinant **courbes de Bézier cu
 | `compute_plan` complet | ~3.9 ms (p99 4.1 ms) | ~6.8 ms (p99 10.9 ms) |
 | `sample_plan` | 0.018 ms | 0.018 ms |
 
-Les deux modes (`cached` et `replan`) tiennent largement le budget de 20 ms par pas.
 
 ---
 
-## 🚀 Utilisation rapide
+## Utilisation
 
 ### Pipeline 2D
 ```bash
