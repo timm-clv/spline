@@ -7,25 +7,6 @@ Contrôleur de trajectoire pour robots mobiles combinant **courbes de Bézier cu
 
 ---
 
-## 📁 Structure du dépôt
-
-├── 2D/ # Pipeline pour robot mobile (plan)
-│ ├── generateur.py # Génère le dataset (20000 trajectoires, 360°)
-│ ├── entrainement.py # Entraîne TimePredictorNet (6→18→5→1)
-│ ├── application.py # Contrôleur + TrajectoryExecutor 50 Hz
-│ ├── benchmark.py # Mesure p50/p95/p99 par brique
-│ └── demo_visuelle.py # Animation matplotlib
-│
-└── 3D/ # Pipeline pour drone (volume)
-├── generateur.py # Dataset 3D (sphère complète, repère local)
-├── entrainement.py # Entraîne TimePredictorNet (8→20→10→1)
-├── application.py # Contrôleur 3D (matrice de rotation locale)
-├── benchmark.py # Benchmark pipeline 3D
-├── demo_visuelle.py # Animation 3D matplotlib
-└── simulate.py # Génère un JSON + viewer web (three.js) avec drone en forêt
-
----
-
 ## ⚙️ Principe
 
 1. **Génération hors-ligne** : pour chaque paire (robot, cible), on calcule par dichotomie le temps minimal \(T_{opt}\) tel que la courbe de Bézier cubique respecte \(V_{\max} = 6.5\) m/s et \(A_{\max} = 6.0\) m/s². Les points de contrôle sont déduits des vitesses de départ/arrivée imposées :
